@@ -188,11 +188,12 @@ def get_daily_price_data_from_db(symbol, start_date, end_date):
     if result:
         columns = ['price_date', 'open_price', 'high_price', 'low_price', 'close_price', 'adj_close_price', 'volume']
         df = pd.DataFrame(result, columns=columns)
-        print(df)
+       
         return df
     else:
         print(f"No data available for {symbol} in the specified date range.")
-        return None
+        return pd.DataFrame()  # Return an empty DataFrame when there's no data
+
 
 #get_symbols()
 
@@ -205,3 +206,19 @@ def get_daily_price_data_from_db(symbol, start_date, end_date):
 #end_date_to_query = '2023-11-16'
 
 #get_daily_price_data_from_db(symbol_to_query, start_date_to_query, end_date_to_query)
+def get_symbols_from_db():
+    # Connect to the MySQL instance
+  
+
+    con = mdb.connect(host=db_host, user=db_user, password=db_pass, database=db_name)
+
+    symbols = []
+
+    with con.cursor() as cursor:
+        sql = "SELECT ticker FROM symbol"
+        cursor.execute(sql)
+        symbols = [row[0] for row in cursor.fetchall()]
+
+    con.close()
+
+    return symbols
