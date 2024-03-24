@@ -112,8 +112,8 @@ def filter_stocks_mean_reverting():
 
 
 # Example usage:
-filtered_stocks = filter_stocks_mean_reverting()
-print( pd.DataFrame(filtered_stocks))
+check_stocks = filter_stocks_mean_reverting()
+print( pd.DataFrame(check_stocks))
 #symbols = get_symbols_from_db()
 #print(symbols)
 
