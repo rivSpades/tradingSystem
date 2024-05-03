@@ -4,7 +4,7 @@ from get_data import get_daily_price_data_from_db,get_symbols_from_db
 import numpy as np
 from hurst import compute_Hc
 import pandas as pd
-
+from technical_indicators import moving_average
 
 def analyze_symbol(symbol, start_date='2020-01-01', end_date='2023-11-17'):
     # Query daily price data from the database
@@ -76,6 +76,19 @@ def filter_stocks_mean_reverting():
         asset_prices = asset['adj_close_price'].apply(lambda x: float(x))
         asset_prices = asset_prices[~pd.isna(asset_prices) & (asset_prices != 0)]
 
+        asset['MA_100'] = moving_average(asset, 100)
+        asset.dropna(subset=['MA_100'], inplace=True)
+        if asset.empty:
+            print(f"After dropna, no data left for {symbol}. Skipping...")
+            continue
+        
+        asset['close_price'] = asset['close_price'].astype(float)
+        asset['Ratio'] = asset['close_price'] / asset['MA_100']
+
+        last_ma = asset['MA_100'].iloc[-1]
+        last_ratio = asset['Ratio'].iloc[-1]
+
+
         if asset_prices.empty:
             print(f"No valid price data for {symbol}. Skipping...")
             continue  # Skip symbols with no valid price data
@@ -89,7 +102,9 @@ def filter_stocks_mean_reverting():
                 'ADF_Statistic': adf_test[0],
                 'ADF_p-value': adf_test[1],
                 'Critical_Values': adf_test[4],
-                'Hurst_Exponent': H
+                'Hurst_Exponent': H,
+                'Current_Ratio': last_ratio,
+                'Current_MA': last_ma
             })
         except Exception as e:
             print(f"Error calculating Hurst exponent for {symbol}: {e}")
@@ -112,8 +127,8 @@ def filter_stocks_mean_reverting():
 
 
 # Example usage:
-check_stocks = filter_stocks_mean_reverting()
-print( pd.DataFrame(check_stocks))
+#check_stocks = filter_stocks_mean_reverting()
+#print( pd.DataFrame(check_stocks))
 #symbols = get_symbols_from_db()
 #print(symbols)
 

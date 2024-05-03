@@ -40,7 +40,7 @@ def get_data_vendor_id(vendor):
 
 
 
-def get_symbols():
+def get_symbols_from_vendor():
     # Send a GET request to the API
     response = requests.get(endpoint)
 
@@ -57,119 +57,155 @@ def get_symbols():
 
         # Replace NaN values with None
         active_stocks = active_stocks.where(pd.notnull(active_stocks), None)
-
-        cursor = con.cursor()
-        for index, row in active_stocks.iterrows():
-            ticker = row['symbol']
-            if ticker is None:
-                continue  # Skip rows with a null ticker
-
-            instrument = row['assetType']
-            name = row['name']
-            sector = None  # Replace this with the actual sector value if available in your DataFrame
-            currency = None  # Replace this with the actual currency value if available in your DataFrame
-            created_date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            last_updated_date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-            # Insert data into the table
-            sql = "INSERT INTO symbol (ticker, instrument, name, sector, currency, created_date, last_updated_date) VALUES (%s, %s, %s, %s, %s, %s, %s)"
-            val = (ticker, instrument, name, sector, currency, created_date, last_updated_date)
-            cursor.execute(sql, val)
+        return active_stocks
+        
+       # cursor = con.cursor()                
+        #fetch_stock_data_from_vendor(ticker,'Yahoo Finance',True)     
+            
+            
             
  
-            fetch_stock_data(ticker,'Yahoo Finance',True)     
-        con.commit()
-        cursor.close()
+            
+        #con.commit()
+        #cursor.close()
 
 
 
-
-
-
-def fetch_stock_data(symbol, data_vendor, insert=False):
-    data_vendor_id = get_data_vendor_id(data_vendor)
-    symbol_id = get_symbol_id(symbol)
-    endpoint = f'https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&outputsize=full&apikey={api_key}'
-    if data_vendor_id is None or symbol_id is None:
-        print("Data vendor or symbol not found.")
-        return False
-
-    # Check the last available date in the database for the given stock
-    last_date_in_database = get_last_date_from_db(symbol_id)
-
-    if data_vendor == 'Yahoo Finance':
-        stock_data = yf.download(symbol, start=last_date_in_database + timedelta(days=1) if last_date_in_database and insert==True else "2020-01-01", end=datetime.datetime.now().strftime('%Y-%m-%d'))
-        stock_data.reset_index(inplace=True)
-       
-        stock_data['Date'] = pd.to_datetime(stock_data['Date']).dt.strftime('%Y-%m-%d')
-
-    elif data_vendor == 'Alphavantage':
+def insert_symbols_in_db():
+    cursor = con.cursor()    
+    symbols=get_symbols_from_vendor()
+    for index, row in symbols.iterrows():
         
-        response = requests.get(endpoint)
+        ticker = row['symbol']
+        print(ticker)
+        if ticker is None:
+            continue  # Skip rows with a null ticker
 
-  
-     
+        cursor.execute("SELECT ticker FROM symbol WHERE ticker = %s", (ticker,))
+        existing_symbol = cursor.fetchone()
+        cursor.fetchall()    
+       
+        if existing_symbol:
+            continue  # Skip insertion if symbol already exists
 
-        if response.status_code == 200:
-            try:
-                data = response.json()['Time Series (Daily)']
+        instrument = row['assetType']
+        name = row['name']
+        sector = None  # Replace this with the actual sector value if available in your DataFrame
+        currency = None  # Replace this with the actual currency value if available in your DataFrame
+        created_date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        last_updated_date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-                stock_data = pd.DataFrame([(datetime.datetime.strptime(date, '%Y-%m-%d'), float(values['1. open']), float(values['2. high']),
-                                             float(values['3. low']), float(values['4. close']), 0, float(values['5. volume']))
-                                            for date, values in data.items()], columns=['Date', 'Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume'])
-
-                # Filter data based on the last date in the database
-                if last_date_in_database:
-                    stock_data = stock_data[stock_data['Date'] > last_date_in_database]
-
-            except KeyError:
-                print(f"No daily price data found for {symbol} on Alpha Vantage.")
-                return False
-        else:
-            print(f"Failed to fetch data from Alpha Vantage for {symbol}")
-            return False
-
-
-
-    if stock_data.empty:
-        print(f"No data available for {symbol} on {data_vendor}.")
-        return False
-
-
- 
-    if insert:
-        print(f"Inserting data for {symbol} from {data_vendor}")
-        for index, row in stock_data.iterrows():
-            price_date = row['Date']
-            open_price = row['Open']
-            high_price = row['High']
-            low_price = row['Low']
-            close_price = row['Close']
-            adj_close_price = row['Adj Close']
-            volume = row['Volume']
-
-            insert_daily_price_data(data_vendor_id, symbol_id, price_date, open_price, high_price, low_price, close_price, adj_close_price, volume)
-
-    return stock_data
-
-
-def insert_daily_price_data(data_vendor_id, symbol_id, price_date, open_price, high_price, low_price, close_price, adj_close_price, volume):
-    cursor = con.cursor()
-    created_date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    last_updated_date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-    # Insert data into the table
-    sql = "INSERT INTO daily_price (data_vendor_id, exchange_vendor_id, symbol_id, price_date, created_date, last_updated_date, open_price, high_price, low_price, close_price, adj_close_price, volume) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
-    val = (data_vendor_id, 1, symbol_id, price_date, created_date, last_updated_date, open_price, high_price, low_price, close_price, adj_close_price, volume)
-    cursor.execute(sql, val)
-
+        # Insert data into the table
+        sql = "INSERT INTO symbol (ticker, instrument, name, sector, currency, created_date, last_updated_date) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+        val = (ticker, instrument, name, sector, currency, created_date, last_updated_date)
+        
+        cursor.execute(sql, val)
+        
     con.commit()
     cursor.close()
 
 
 
 
-def get_last_date_from_db(symbol_id):
+import datetime
+
+def get_daily_price_from_vendor(symbol, data_vendor, start_date, end_date=None):
+    data_vendor_id = get_data_vendor_id(data_vendor)
+    symbol_id = get_symbol_id(symbol)
+
+    if data_vendor_id is None or symbol_id is None:
+        print("Data vendor or symbol not found.")
+        return False
+
+    if end_date is None:
+        end_date = datetime.date.today().strftime('%Y-%m-%d')
+
+    if data_vendor == 'Yahoo Finance':
+        stock_data = yf.download(symbol, start=start_date, end=end_date)
+        stock_data.reset_index(inplace=True)
+        stock_data['Date'] = pd.to_datetime(stock_data['Date']).dt.strftime('%Y-%m-%d')
+
+    elif data_vendor == 'Alphavantage':
+        endpoint = f'https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&outputsize=full&apikey={api_key}'
+        response = requests.get(endpoint)
+
+        if response.status_code == 200:
+            try:
+                data = response.json()['Time Series (Daily)']
+                stock_data = pd.DataFrame([(datetime.datetime.strptime(date, '%Y-%m-%d'), float(values['1. open']), float(values['2. high']),
+                                             float(values['3. low']), float(values['4. close']), 0, float(values['5. volume']))
+                                            for date, values in data.items()], columns=['Date', 'Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume'])
+
+                # Filter data based on the specified date range
+                stock_data = stock_data[(stock_data['Date'] >= start_date) & (stock_data['Date'] <= end_date)]
+
+            except KeyError:
+                print(f"No daily price data found for {symbol} on Alpha Vantage.")
+                return pd.DataFrame()
+        else:
+            print(f"Failed to fetch data from Alpha Vantage for {symbol}")
+            return pd.DataFrame()
+        
+        
+    if stock_data.empty:
+        print(f"No data available for {symbol} on {data_vendor}.")
+        return pd.DataFrame()
+    
+    return stock_data
+
+
+
+def insert_daily_price_data_in_db(symbol, start_date, end_date=None):
+    print(symbol)
+    data_vendor = 'Alphavantage'
+    last_date = get_last_date_from_db(symbol)
+    #first_date = get_first_date_from_db(symbol)
+    if last_date:
+        # Increment last_date by one day to set as the start_date
+        start_date = (last_date + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
+
+    stock_data = get_daily_price_from_vendor(symbol, 'Alphavantage', start_date, end_date)
+
+    if stock_data.empty:
+        data_vendor = 'Yahoo Finance'
+        stock_data = get_daily_price_from_vendor(symbol, 'Yahoo Finance', start_date, end_date)
+
+        if stock_data.empty:
+            print(f"No data available for {symbol} on {data_vendor}.")
+            return False
+
+    cursor = con.cursor()
+    data_vendor_id = get_data_vendor_id(data_vendor)
+    symbol_id = get_symbol_id(symbol)
+
+    for index, row in stock_data.iterrows():
+        price_date = row['Date']
+        open_price = row['Open']
+        high_price = row['High']
+        low_price = row['Low']
+        close_price = row['Close']
+        adj_close_price = row['Adj Close']
+        volume = row['Volume']
+
+        created_date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        last_updated_date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+        sql = "INSERT INTO daily_price (data_vendor_id, exchange_vendor_id, symbol_id, price_date, created_date, last_updated_date, open_price, high_price, low_price, close_price, adj_close_price, volume) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+        val = (data_vendor_id, 1, symbol_id, price_date, created_date, last_updated_date, open_price, high_price, low_price, close_price, adj_close_price, volume)
+        cursor.execute(sql, val)
+
+    con.commit()
+    cursor.close()
+
+
+def insert_daily_price_data_for_all_symbols(start_date,end_date=None):
+    symbols = get_symbols_from_db()
+    for symbol in symbols:
+        insert_daily_price_data_in_db(symbol, start_date,end_date)
+        
+
+def get_last_date_from_db(symbol):
+    symbol_id=get_symbol_id(symbol)
     with con.cursor() as cursor:
         sql = "SELECT MAX(price_date) FROM daily_price WHERE symbol_id = %s"
         cursor.execute(sql, (symbol_id,))
@@ -177,10 +213,35 @@ def get_last_date_from_db(symbol_id):
      
     return result[0] if result[0] else None
 
-
-
-def get_daily_price_data_from_db(symbol, start_date, end_date):
+def get_first_date_from_db(symbol):
+    symbol_id=get_symbol_id(symbol)
     with con.cursor() as cursor:
+        sql = "SELECT MIN(price_date) FROM daily_price WHERE symbol_id = %s"
+        cursor.execute(sql, (symbol_id,))
+        result = cursor.fetchone()
+     
+    return result[0] if result[0] else None
+
+
+
+def get_daily_price_from_db(symbol, start_date, end_date=None):
+    with con.cursor() as cursor:
+        # Convert start_date to datetime if it's a string
+        if isinstance(start_date, str):
+            start_date = datetime.datetime.strptime(start_date, '%Y-%m-%d')
+
+        # Set end_date to today's date if not specified
+        if end_date is None:
+            end_date = get_last_date_from_db(symbol)
+        
+        first_date = get_first_date_from_db(symbol)
+        if first_date is None:
+            print(f"No data available for {symbol} in the database.")
+            return pd.DataFrame()  # Return an empty DataFrame
+
+        if start_date < first_date:
+            start_date = first_date
+
         sql = "SELECT price_date, open_price, high_price, low_price, close_price, adj_close_price, volume FROM daily_price WHERE symbol_id = %s AND price_date BETWEEN %s AND %s"
         cursor.execute(sql, (get_symbol_id(symbol), start_date, end_date))
         result = cursor.fetchall()
@@ -195,19 +256,9 @@ def get_daily_price_data_from_db(symbol, start_date, end_date):
         return pd.DataFrame()  # Return an empty DataFrame when there's no data
 
 
-#get_symbols()
 
-
-#get_last_date_from_db(7628)
-
-# Example usage:
-#symbol_to_query = 'AAPL'
-#start_date_to_query = '2023-01-01'
-#end_date_to_query = '2023-11-16'
-
-#get_daily_price_data_from_db(symbol_to_query, start_date_to_query, end_date_to_query)
 def get_symbols_from_db():
-    # Connect to the MySQL instance
+    
   
 
     con = mdb.connect(host=db_host, user=db_user, password=db_pass, database=db_name)
@@ -222,3 +273,7 @@ def get_symbols_from_db():
     con.close()
 
     return symbols
+
+
+
+#insert_daily_price_data_for_all_symbols("2013-01-01")
