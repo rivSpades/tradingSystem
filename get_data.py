@@ -25,7 +25,7 @@ def get_symbol_id(ticker):
     # Fetch all remaining rows (if any)
     cursor.fetchall()
 
-    cursor.close()  # Close the cursor after fetching results
+    cursor.close()  # Close the cursor after fetching result
 
     return list(result)[0] if result else None
 
