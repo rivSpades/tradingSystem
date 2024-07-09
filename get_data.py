@@ -277,3 +277,9 @@ def get_symbols_from_db():
 
 
 #insert_daily_price_data_for_all_symbols("2013-01-01")
+def main():
+
+    insert_daily_price_data_for_all_symbols("2013-01-01")
+
+
+main()
