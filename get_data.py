@@ -157,14 +157,16 @@ def get_daily_price_from_vendor(symbol, data_vendor, start_date, end_date=None):
 
 def insert_daily_price_data_in_db(symbol, start_date, end_date=None):
     print(symbol)
-    data_vendor = 'Alphavantage'
+    #data_vendor = 'Alphavantage'
+    data_vendor = 'Yahoo Finance'
     last_date = get_last_date_from_db(symbol)
     #first_date = get_first_date_from_db(symbol)
     if last_date:
         # Increment last_date by one day to set as the start_date
         start_date = (last_date + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
 
-    stock_data = get_daily_price_from_vendor(symbol, 'Alphavantage', start_date, end_date)
+    #stock_data = get_daily_price_from_vendor(symbol, 'Alphavantage', start_date, end_date)
+    stock_data = get_daily_price_from_vendor(symbol, 'Yahoo Finance', start_date, end_date)
 
     if stock_data.empty:
         data_vendor = 'Yahoo Finance'
@@ -242,7 +244,12 @@ def get_daily_price_from_db(symbol, start_date, end_date=None):
         if start_date < first_date:
             start_date = first_date
 
-        sql = "SELECT price_date, open_price, high_price, low_price, close_price, adj_close_price, volume FROM daily_price WHERE symbol_id = %s AND price_date BETWEEN %s AND %s"
+        sql = """
+        SELECT price_date, open_price, high_price, low_price, close_price, adj_close_price, volume 
+        FROM daily_price 
+        WHERE symbol_id = %s AND price_date BETWEEN %s AND %s
+        ORDER BY price_date ASC
+        """
         cursor.execute(sql, (get_symbol_id(symbol), start_date, end_date))
         result = cursor.fetchall()
 
@@ -279,7 +286,8 @@ def get_symbols_from_db():
 #insert_daily_price_data_for_all_symbols("2013-01-01")
 def main():
 
-    insert_daily_price_data_for_all_symbols("2013-01-01")
+    #insert_daily_price_data_for_all_symbols("2013-01-01")
+    insert_daily_price_data_in_db("IRWD", "2013-01-01")
 
 
-main()
+#main()
