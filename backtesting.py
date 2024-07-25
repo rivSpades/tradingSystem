@@ -62,6 +62,9 @@ def calculate_statistics(trade_log,price_data):
     for i in range(1, len(trade_log)):
         if trade_log[i]['trade_type'] == 'Exit' and trade_log[i-1]['trade_type'] == 'Long':
             entry_price = trade_log[i-1]['price']
+            if entry_price == 0:  # Ensure no division by zero
+                print("entry price is zero , error")
+                continue
             holding_data = price_data[(price_data['price_date'] >= trade_log[i-1]['trade_date']) & (price_data['price_date'] <= trade_log[i]['trade_date'])]
            
             lowest_price = holding_data['low_price'].min()
@@ -112,6 +115,14 @@ def insert_backtesting_results(conn, strategy_id, symbol_id, start_date, end_dat
     ))
     conn.commit()
 
+
+def check_backtesting_results_exists(conn, strategy_id, symbol_id):
+    cursor = conn.cursor()
+    query = "SELECT COUNT(*) FROM backtesting_results WHERE strategy_id = %s AND symbol_id = %s"
+    cursor.execute(query, (strategy_id, symbol_id))
+    result = cursor.fetchone()
+    return result[0] > 0    
+
 def insert_trade_log(conn, strategy_id, symbol_id, trade_log):
     cursor = conn.cursor()
     query = '''
@@ -129,10 +140,19 @@ def insert_trade_log(conn, strategy_id, symbol_id, trade_log):
 def main():
     strategy_id = 1
     symbols = get_symbols_from_db()
-    for symbol in symbols:
+    for symbol, instrument in symbols:
         print(symbol)
-        symbol_id = get_symbol_id(symbol)
+        #print(instrument)
+        if instrument != 'cryptocurrency':
+            continue
 
+      
+
+        symbol_id = get_symbol_id(symbol)
+        conn = connect_db()
+        if  check_backtesting_results_exists(conn, strategy_id, symbol_id):
+            conn.close()
+            continue
         df = get_daily_price_from_db(symbol, "2013-01-01")
     
 
@@ -163,8 +183,9 @@ def main():
     # Connect to the database
         
 
-        conn = connect_db()
-        delete_existing_entries(conn, strategy_id, symbol_id)
+        
+        #delete_existing_entries(conn, strategy_id, symbol_id)
+
     # Insert backtesting results
         
         insert_backtesting_results(conn, strategy_id, symbol_id, current_data["price_date"].iloc[0], current_data["price_date"].iloc[-1], statistics)
@@ -176,7 +197,7 @@ def main():
         conn.close()
     
      
-        conn.close()
+        #conn.close()
                  
 
     #print(trade_log)

@@ -9,6 +9,11 @@ from datetime import timedelta
 api_key = 'HOG8WJ5U6FDNIBQD'
 endpoint = f'https://www.alphavantage.co/query?function=LISTING_STATUS&apikey=demo'
 
+
+
+
+api_key_crypto='6b515a38920034e96cf7f221695cc4e16a17d7b57a6358d3a5749c2a1ed1c50e' 
+url_crypto = f'https://min-api.cryptocompare.com/data/v4/all/exchanges?e=Binance&api_key={api_key_crypto}'
 # Connect to the MySQL instance
 db_host = 'localhost'
 db_user = 'admin_securities'
@@ -69,6 +74,25 @@ def get_symbols_from_vendor():
         #con.commit()
         #cursor.close()
 
+def get_crypto_symbols_from_vendor():
+    
+    response = requests.get(url_crypto)
+    
+    if response.status_code == 200:
+        data = response.json()
+        binance_pairs = []
+
+        # Filter for BTC pairs in Binance
+        binance_data = data['Data']['exchanges']['Binance']['pairs']
+        for fsym, pair_data in binance_data.items():
+            for tsym in pair_data['tsyms']:
+                if tsym == 'BTC':
+                    binance_pairs.append(f"{fsym}-{tsym}")
+
+        return binance_pairs
+    else:
+        print("Failed to fetch data from CryptoCompare")
+        return []
 
 
 def insert_symbols_in_db():
@@ -105,7 +129,32 @@ def insert_symbols_in_db():
     cursor.close()
 
 
+def insert_crypto_symbols_in_db():
+    symbols = get_crypto_symbols_from_vendor()
+    with con.cursor() as cursor:
+        for pair in symbols:
+            ticker, tsym = pair.split('-')
+            cursor.execute("SELECT ticker FROM symbol WHERE ticker = %s", (ticker,))
+            existing_symbol = cursor.fetchone()
+            
+            if existing_symbol:
+                continue  # Skip insertion if symbol already exists
 
+            instrument = 'cryptocurrency'
+            name = ticker  # You might want to get the full name from another API
+            sector = 'Cryptocurrency'
+            currency = tsym
+            created_date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            last_updated_date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            sql = """
+                INSERT INTO symbol (ticker, instrument, name, sector, currency, created_date, last_updated_date)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """
+            val = (pair, instrument, name, sector, currency, created_date, last_updated_date)
+            cursor.execute(sql, val)
+            
+        con.commit()
 
 import datetime
 
@@ -153,7 +202,21 @@ def get_daily_price_from_vendor(symbol, data_vendor, start_date, end_date=None):
     
     return stock_data
 
+def get_crypto_daily_price_from_vendor(symbol, start_date, end_date=None):
+    fsym, tsym = symbol.split('-')
+    url = f'https://min-api.cryptocompare.com/data/v2/histoday?fsym={fsym}&tsym={tsym}&limit=2000&api_key={api_key_crypto}'
+    response = requests.get(url)
 
+    if response.status_code == 200:
+        data = response.json()['Data']['Data']
+        prices = pd.DataFrame(data)
+        prices['time'] = pd.to_datetime(prices['time'], unit='s')
+        prices.rename(columns={'time': 'Date', 'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volumeto': 'Volume'}, inplace=True)
+        prices['Adj Close'] = prices['Close']  # For cryptocurrencies, adjusted close is typically the same as close
+        return prices[['Date', 'Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']]
+    else:
+        print(f"Failed to fetch daily prices for {symbol} from CryptoCompare")
+        return pd.DataFrame()
 
 def insert_daily_price_data_in_db(symbol, start_date, end_date=None):
     print(symbol)
@@ -199,11 +262,51 @@ def insert_daily_price_data_in_db(symbol, start_date, end_date=None):
     con.commit()
     cursor.close()
 
+def insert_crypto_daily_price_data_in_db(symbol, start_date, end_date=None):
+    print(symbol)
+    
+    last_date = get_last_date_from_db(symbol)
+    if last_date:
+        start_date = (last_date + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
 
-def insert_daily_price_data_for_all_symbols(start_date,end_date=None):
+    crypto_data = get_crypto_daily_price_from_vendor(symbol, start_date, end_date)
+
+    if crypto_data.empty:
+        print(f"No data available for {symbol}.")
+        return False
+
+    cursor = con.cursor()
+    data_vendor_id = get_data_vendor_id('CryptoCompare')  # Assuming CryptoCompare as data vendor
+    symbol_id = get_symbol_id(symbol)
+
+    for index, row in crypto_data.iterrows():
+        price_date = row['Date']
+        open_price = row['Open']
+        high_price = row['High']
+        low_price = row['Low']
+        close_price = row['Close']
+        adj_close_price = row['Adj Close']
+        volume = row['Volume']
+
+        created_date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        last_updated_date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+        sql = """INSERT INTO daily_price (data_vendor_id, exchange_vendor_id, symbol_id, price_date, created_date, last_updated_date, open_price, high_price, low_price, close_price, adj_close_price, volume) 
+                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+        val = (data_vendor_id, 1, symbol_id, price_date, created_date, last_updated_date, open_price, high_price, low_price, close_price, adj_close_price, volume)
+        cursor.execute(sql, val)
+
+    con.commit()
+    cursor.close()    
+
+
+def insert_daily_price_data_for_all_symbols(start_date, end_date=None):
     symbols = get_symbols_from_db()
-    for symbol in symbols:
-        insert_daily_price_data_in_db(symbol, start_date,end_date)
+    for symbol, instrument in symbols:
+        if instrument == 'cryptocurrency':
+            insert_crypto_daily_price_data_in_db(symbol, start_date, end_date)
+        else:
+            insert_daily_price_data_in_db(symbol, start_date, end_date)
         
 
 def get_last_date_from_db(symbol):
@@ -265,17 +368,13 @@ def get_daily_price_from_db(symbol, start_date, end_date=None):
 
 
 def get_symbols_from_db():
-    
-  
-
     con = mdb.connect(host=db_host, user=db_user, password=db_pass, database=db_name)
-
     symbols = []
 
     with con.cursor() as cursor:
-        sql = "SELECT ticker FROM symbol"
+        sql = "SELECT ticker, instrument FROM symbol"
         cursor.execute(sql)
-        symbols = [row[0] for row in cursor.fetchall()]
+        symbols = [(row[0], row[1]) for row in cursor.fetchall()]
 
     con.close()
 
@@ -286,8 +385,13 @@ def get_symbols_from_db():
 #insert_daily_price_data_for_all_symbols("2013-01-01")
 def main():
 
-    #insert_daily_price_data_for_all_symbols("2013-01-01")
-    insert_daily_price_data_in_db("IRWD", "2013-01-01")
+    insert_daily_price_data_for_all_symbols("2013-01-01")
+    #insert_daily_price_data_in_db("IRWD", "2013-01-01")
+    #crypto=get_crypto_symbols_from_vendor()
+    #print(crypto)
+    #insert_crypto_symbols_in_db()
+    #print(get_crypto_daily_price_from_vendor("BNB-BTC","2013-01-01"))
+    #insert_crypto_daily_price_data_in_db("BNB-BTC","2013-01-01")
 
 
 #main()
