@@ -157,6 +157,31 @@ def check_adf(df):
     
 
 
+def check_adf_p_value(df):
+    if df.empty:
+        return False
+
+    if 'close_price' not in df.columns:
+        return False
+
+    df['close_price'] = df['close_price'].astype(float)
+    if df['close_price'].std() == 0:
+        return False
+    
+    try:
+        results = ts.adfuller(df['close_price'], 1)
+    except:
+        return False 
+
+    p_value = results[1]
+
+    # Check if the p-value is greater than 0.5
+    if p_value > 0.5:
+        return False
+    else:
+        return True
+
+
 def check_hurst(df):
    
     df['close_price'] = df['close_price'].apply(lambda x: float(x))
@@ -235,7 +260,7 @@ def long(df,buy=False):
       #print(p)
       
       return 'Long'
-  elif buy==True and  df['Ratio'].iloc[-1]>=p[2]: 
+  elif buy==True and  (df['Ratio'].iloc[-1]>=p[2] or not check_adf_p_value(df) or not check_hurst(df)): 
       print("Exiting")
       #print( df.tail(10)) 
       #print(p)

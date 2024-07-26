@@ -306,6 +306,7 @@ def insert_daily_price_data_for_all_symbols(start_date, end_date=None):
         if instrument == 'cryptocurrency':
             insert_crypto_daily_price_data_in_db(symbol, start_date, end_date)
         else:
+           
             insert_daily_price_data_in_db(symbol, start_date, end_date)
         
 
@@ -391,7 +392,7 @@ def main():
     #print(crypto)
     #insert_crypto_symbols_in_db()
     #print(get_crypto_daily_price_from_vendor("BNB-BTC","2013-01-01"))
-    #insert_crypto_daily_price_data_in_db("BNB-BTC","2013-01-01")
+    #insert_crypto_daily_price_data_in_db("SCRT-BTC","2013-01-01")
 
 
-#main()
+main()

@@ -43,8 +43,8 @@ def calculate_statistics(trade_log,price_data):
     percentage_loss_periods = (losing_periods / len(period_pnls) * 100) if period_pnls else 0  # Percentage Loss Periods
 
     # Calculate ROI %
-    initial_investment = 1
-    roi = (total_pnl- initial_investment) * 100 if initial_investment != 0 else 0
+    total_investment = sum(1 for trade in trade_log if trade['trade_type'] == 'Long')  # Each 'Long' trade represents a $1 investment
+    roi = (total_pnl / total_investment) * 100 if total_investment != 0 else 0
 
     # Calculate max drawdown
     cumulative_pnl = np.cumsum(period_pnls)
@@ -150,9 +150,9 @@ def main():
 
         symbol_id = get_symbol_id(symbol)
         conn = connect_db()
-        if  check_backtesting_results_exists(conn, strategy_id, symbol_id):
-            conn.close()
-            continue
+        #if  check_backtesting_results_exists(conn, strategy_id, symbol_id):
+        #    conn.close()
+        #    continue
         df = get_daily_price_from_db(symbol, "2013-01-01")
     
 
@@ -168,11 +168,17 @@ def main():
             #print(signal)
             #print(buy)
             if signal=='Long' and not buy:
+                entry_price = future_data['close_price'].iloc[i]
+                quantity = 1 / entry_price
+                
                 buy = True
-                trade_log.append({'trade_date': future_data["price_date"].iloc[i], 'trade_type': 'Long', 'price': future_data['close_price'].iloc[i],  'profit_loss': 0})
+                trade_log.append({'trade_date': future_data["price_date"].iloc[i], 'trade_type': 'Long', 'price': future_data['close_price'].iloc[i],  'quantity': quantity,  'profit_loss': 0})
             elif signal=="Exit" and buy:
+                exit_price = future_data['close_price'].iloc[i]
+                quantity = trade_log[-1]['quantity'] 
+                profit_loss = (exit_price - trade_log[-1]['price']) * quantity
                 buy = False
-                trade_log.append({'trade_date': future_data["price_date"].iloc[i], 'trade_type': 'Exit', 'price': future_data['close_price'].iloc[i],  'profit_loss': future_data['close_price'].iloc[i] - trade_log[-1]['price']})
+                trade_log.append({'trade_date': future_data["price_date"].iloc[i], 'trade_type': 'Exit', 'price': future_data['close_price'].iloc[i], 'quantity': quantity,  'profit_loss': profit_loss})
 
     # Calculate statistics
         statistics = calculate_statistics(trade_log,df)
@@ -184,7 +190,7 @@ def main():
         
 
         
-        #delete_existing_entries(conn, strategy_id, symbol_id)
+        delete_existing_entries(conn, strategy_id, symbol_id)
 
     # Insert backtesting results
         
