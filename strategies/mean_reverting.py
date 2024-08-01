@@ -260,7 +260,7 @@ def long(df,buy=False):
       #print(p)
       
       return 'Long'
-  elif buy==True and  (df['Ratio'].iloc[-1]>=p[2] or not check_adf_p_value(df) or not check_hurst(df)): 
+  elif buy==True and  (df['Ratio'].iloc[-1]>=p[2] ): 
       print("Exiting")
       #print( df.tail(10)) 
       #print(p)

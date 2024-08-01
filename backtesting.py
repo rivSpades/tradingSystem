@@ -127,14 +127,15 @@ def insert_trade_log(conn, strategy_id, symbol_id, trade_log):
     cursor = conn.cursor()
     query = '''
         INSERT INTO backtesting_trades (
-            strategy_id, symbol_id, trade_date, trade_type, price, profit_loss
-        ) VALUES (%s, %s, %s, %s, %s, %s)
+            strategy_id, symbol_id, trade_date, trade_type, price, profit_loss, max_drawdown
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
     '''
     for trade in trade_log:
         cursor.execute(query, (
-            strategy_id, symbol_id, trade['trade_date'], trade['trade_type'], trade['price'], trade['profit_loss']
+            strategy_id, symbol_id, trade['trade_date'], trade['trade_type'], trade['price'], trade['profit_loss'], trade['max_drawdown']
         ))
     conn.commit()
+
 
 # Replace with actual values
 def main():
@@ -143,16 +144,16 @@ def main():
     for symbol, instrument in symbols:
         print(symbol)
         #print(instrument)
-        if instrument != 'cryptocurrency':
-            continue
+        #if instrument != 'cryptocurrency':
+        #    continue
 
       
 
         symbol_id = get_symbol_id(symbol)
         conn = connect_db()
-        #if  check_backtesting_results_exists(conn, strategy_id, symbol_id):
-        #    conn.close()
-        #    continue
+        if not check_backtesting_results_exists(conn, strategy_id, symbol_id):
+            conn.close()
+            continue
         df = get_daily_price_from_db(symbol, "2013-01-01")
     
 
@@ -165,27 +166,49 @@ def main():
         for i in range(len(future_data.index)):
             current_data = pd.concat([current_data, pd.DataFrame(future_data.iloc[i]).transpose()], axis=0)
             signal = long(current_data, buy)
-            #print(signal)
-            #print(buy)
-            if signal=='Long' and not buy:
+
+            if signal == 'Long' and not buy:
                 entry_price = future_data['close_price'].iloc[i]
+                lowest_price = entry_price
                 quantity = 1 / entry_price
-                
+
                 buy = True
-                trade_log.append({'trade_date': future_data["price_date"].iloc[i], 'trade_type': 'Long', 'price': future_data['close_price'].iloc[i],  'quantity': quantity,  'profit_loss': 0})
-            elif signal=="Exit" and buy:
+                trade_log.append({
+                    'trade_date': future_data["price_date"].iloc[i],
+                    'trade_type': 'Long',
+                    'price': future_data['close_price'].iloc[i],
+                    'quantity': quantity,
+                    'profit_loss': 0,
+                    'max_drawdown': 0  # Initialize drawdown
+                })
+
+            elif signal == "Exit" and buy:
                 exit_price = future_data['close_price'].iloc[i]
-                quantity = trade_log[-1]['quantity'] 
+                quantity = trade_log[-1]['quantity']
                 profit_loss = (exit_price - trade_log[-1]['price']) * quantity
+                drawdown = (entry_price - lowest_price) / entry_price * 100
+
                 buy = False
-                trade_log.append({'trade_date': future_data["price_date"].iloc[i], 'trade_type': 'Exit', 'price': future_data['close_price'].iloc[i], 'quantity': quantity,  'profit_loss': profit_loss})
+                trade_log.append({
+                    'trade_date': future_data["price_date"].iloc[i],
+                    'trade_type': 'Exit',
+                    'price': future_data['close_price'].iloc[i],
+                    'quantity': quantity,
+                    'profit_loss': profit_loss,
+                    'max_drawdown': drawdown
+                })
 
-    # Calculate statistics
-        statistics = calculate_statistics(trade_log,df)
+            if buy:
+                # Update the lowest price while the trade is active
+                current_low_price = future_data['low_price'].iloc[i]
+                if current_low_price < lowest_price:
+                    lowest_price = current_low_price
+
+        # Calculate statistics
+        statistics = calculate_statistics(trade_log, df)
         if not statistics:
-            print("no statistics , error")
+            print("No statistics, error")
             continue
-
     # Connect to the database
         
 

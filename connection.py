@@ -18,3 +18,5 @@ def connect_db():
     except mdb.Error as e:
         print(f"Error connecting to MySQL database: {e}")
         return None
+
+

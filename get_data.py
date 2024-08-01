@@ -13,7 +13,7 @@ endpoint = f'https://www.alphavantage.co/query?function=LISTING_STATUS&apikey=de
 
 
 api_key_crypto='6b515a38920034e96cf7f221695cc4e16a17d7b57a6358d3a5749c2a1ed1c50e' 
-url_crypto = f'https://min-api.cryptocompare.com/data/v4/all/exchanges?e=Binance&api_key={api_key_crypto}'
+url_crypto = f'https://min-api.cryptocompare.com/data/all/coinlist?api_key={api_key_crypto}'
 # Connect to the MySQL instance
 db_host = 'localhost'
 db_user = 'admin_securities'
@@ -75,21 +75,19 @@ def get_symbols_from_vendor():
         #cursor.close()
 
 def get_crypto_symbols_from_vendor():
-    
     response = requests.get(url_crypto)
     
     if response.status_code == 200:
-        data = response.json()
-        binance_pairs = []
+        data = response.json()['Data']
+        all_pairs = []
+        #print(data)
 
-        # Filter for BTC pairs in Binance
-        binance_data = data['Data']['exchanges']['Binance']['pairs']
-        for fsym, pair_data in binance_data.items():
-            for tsym in pair_data['tsyms']:
-                if tsym == 'BTC':
-                    binance_pairs.append(f"{fsym}-{tsym}")
+        for symbol in data.keys():
+            
+               
+            all_pairs.append(symbol)
 
-        return binance_pairs
+        return all_pairs
     else:
         print("Failed to fetch data from CryptoCompare")
         return []
@@ -133,7 +131,9 @@ def insert_crypto_symbols_in_db():
     symbols = get_crypto_symbols_from_vendor()
     with con.cursor() as cursor:
         for pair in symbols:
-            ticker, tsym = pair.split('-')
+            #ticker, tsym = pair.split('-')
+            tsym="BTC"
+            ticker=pair
             cursor.execute("SELECT ticker FROM symbol WHERE ticker = %s", (ticker,))
             existing_symbol = cursor.fetchone()
             
@@ -151,7 +151,7 @@ def insert_crypto_symbols_in_db():
                 INSERT INTO symbol (ticker, instrument, name, sector, currency, created_date, last_updated_date)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
             """
-            val = (pair, instrument, name, sector, currency, created_date, last_updated_date)
+            val = (pair+'-'+tsym, instrument, name, sector, currency, created_date, last_updated_date)
             cursor.execute(sql, val)
             
         con.commit()
@@ -208,7 +208,11 @@ def get_crypto_daily_price_from_vendor(symbol, start_date, end_date=None):
     response = requests.get(url)
 
     if response.status_code == 200:
-        data = response.json()['Data']['Data']
+        try:
+            data = response.json()['Data']['Data']
+        except:
+            print(f"Failed to fetch daily prices for {symbol} from CryptoCompare")
+            return pd.DataFrame() 
         prices = pd.DataFrame(data)
         prices['time'] = pd.to_datetime(prices['time'], unit='s')
         prices.rename(columns={'time': 'Date', 'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volumeto': 'Volume'}, inplace=True)
@@ -307,6 +311,7 @@ def insert_daily_price_data_for_all_symbols(start_date, end_date=None):
             insert_crypto_daily_price_data_in_db(symbol, start_date, end_date)
         else:
            
+           
             insert_daily_price_data_in_db(symbol, start_date, end_date)
         
 
@@ -395,4 +400,4 @@ def main():
     #insert_crypto_daily_price_data_in_db("SCRT-BTC","2013-01-01")
 
 
-main()
+#main()
