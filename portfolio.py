@@ -339,5 +339,5 @@ def main():
     #print(get_symbol_statistics('BIL'))
     calc_betsize('BIL',1)
 
-if __name__ == "__main__":
-    main()
+#if __name__ == "__main__":
+    #main()

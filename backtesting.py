@@ -144,16 +144,16 @@ def main():
     for symbol, instrument in symbols:
         print(symbol)
         #print(instrument)
-        #if instrument != 'cryptocurrency':
-        #    continue
+        if instrument == 'cryptocurrency':
+            continue
 
       
 
         symbol_id = get_symbol_id(symbol)
         conn = connect_db()
-        if not check_backtesting_results_exists(conn, strategy_id, symbol_id):
-            conn.close()
-            continue
+        #if not check_backtesting_results_exists(conn, strategy_id, symbol_id):
+        #    conn.close()
+        #    continue
         df = get_daily_price_from_db(symbol, "2013-01-01")
     
 

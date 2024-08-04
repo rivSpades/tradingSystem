@@ -11,9 +11,10 @@ endpoint = f'https://www.alphavantage.co/query?function=LISTING_STATUS&apikey=de
 
 
 
-
+api_eod_key='66ae1118bb93f4.94656892'
 api_key_crypto='6b515a38920034e96cf7f221695cc4e16a17d7b57a6358d3a5749c2a1ed1c50e' 
 url_crypto = f'https://min-api.cryptocompare.com/data/all/coinlist?api_key={api_key_crypto}'
+exchanges = ['LSE','TO','V','NEO' , 'BE' , 'HM' , 'DU' ,'MU' ,'STU' ,'F' ,'LU' ,'VI' ,'PA' ,'BR' ,'MC','SW' ,'LS' ,'AS' ,'IC' ,'IR' ,'HE' ,'OL' 'CO' ,'ST','VFEX','XZIM','LUSE' ,'USE' ,'PR','RSE' ,'XBOT', 'XETRA', 'HKEX', 'TSX', 'ASX']
 # Connect to the MySQL instance
 db_host = 'localhost'
 db_user = 'admin_securities'
@@ -44,6 +45,43 @@ def get_data_vendor_id(vendor):
     return list(result)[0] if result else None
 
 
+def get_world_symbols_from_vendor():
+    exchanges_list_url = f'https://eodhd.com/api/exchanges-list/?api_token={api_eod_key}&fmt=json'
+    exchanges_response = requests.get(exchanges_list_url)
+    
+    if exchanges_response.status_code == 200:
+        exchanges_data = exchanges_response.json()
+        # Create a list of exchange codes excluding 'US'
+        exchanges = [exchange['Code'] for exchange in exchanges_data if exchange['Code'] != 'US']
+        print(exchanges)
+    else:
+        print("Failed to retrieve exchanges list")
+        return pd.DataFrame()
+    all_symbols = pd.DataFrame()    
+    for exchange in exchanges:
+        url = f'https://eodhistoricaldata.com/api/exchange-symbol-list/{exchange}?api_token={api_eod_key}'
+        response = requests.get(url)
+
+        # Check if the request was successful
+        if response.status_code == 200:
+            # Read the CSV data from the response content
+            csv_data = StringIO(response.text)
+
+            # Create a DataFrame from the CSV data
+            df = pd.read_csv(csv_data)
+            all_symbols = pd.concat([all_symbols, df], ignore_index=True)
+    all_symbols.rename(columns={
+            'Code': 'symbol',
+            'Name': 'name',
+            'Exchange': 'exchange',
+            'Type':'assetType'
+        }, inplace=True)
+    active_stocks = all_symbols[all_symbols['assetType'].isin(['Common Stock', 'ETF'])]   
+    active_stocks = active_stocks.where(pd.notnull(active_stocks), None)
+    
+    return active_stocks
+
+
 
 def get_symbols_from_vendor():
     # Send a GET request to the API
@@ -62,6 +100,7 @@ def get_symbols_from_vendor():
 
         # Replace NaN values with None
         active_stocks = active_stocks.where(pd.notnull(active_stocks), None)
+
         return active_stocks
         
        # cursor = con.cursor()                
@@ -112,6 +151,154 @@ def insert_symbols_in_db():
 
         instrument = row['assetType']
         name = row['name']
+        sector = None  # Replace this with the actual sector value if available in your DataFrame
+        currency = None  # Replace this with the actual currency value if available in your DataFrame
+        created_date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        last_updated_date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+        # Insert data into the table
+        sql = "INSERT INTO symbol (ticker, instrument, name, sector, currency, created_date, last_updated_date) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+        val = (ticker, instrument, name, sector, currency, created_date, last_updated_date)
+        
+        cursor.execute(sql, val)
+        
+    con.commit()
+    cursor.close()
+
+def insert_world_symbols_in_db():
+    cursor = con.cursor()    
+    symbols = get_world_symbols_from_vendor()
+    
+    exchanges = {
+    'LSE': '.L',        # London Stock Exchange
+    'NYSE': '',         # New York Stock Exchange
+    'NASDAQ': '',       # NASDAQ Stock Exchange
+    'Euronext': '.PA',  # Euronext Paris
+    'Frankfurt': '.DE', # Frankfurt Stock Exchange
+    'Tokyo': '.T',      # Tokyo Stock Exchange
+    'HKEX': '.HK',      # Hong Kong Stock Exchange
+    'TSX': '.TO',       # Toronto Stock Exchange
+    'ASX': '.AX',       # Australian Securities Exchange
+    'BSE': '.BO',       # Bombay Stock Exchange
+    'NSE': '.NS',       # National Stock Exchange of India
+    'SGX': '.SI',       # Singapore Exchange
+    'KOSPI': '.KS',     # Korea Securities Dealers Automated Quotations (KOSDAQ)
+    'SSE': '.SS',       # Shanghai Stock Exchange
+    'SZSE': '.SZ',      # Shenzhen Stock Exchange
+    'Bovespa': '.SA',   # B3 (formerly BM&FBOVESPA) - São Paulo Stock Exchange
+    'Wien': '.VI',      # Vienna Stock Exchange
+    'Zurich': '.SW',    # SIX Swiss Exchange
+    'Oslo': '.OL',      # Oslo Stock Exchange
+    'IEX': '.IEX',      # Investors Exchange
+    'Milan': '.MI',     # Borsa Italiana (Milan Stock Exchange)
+    'Santiago': '.SCL', # Santiago Stock Exchange
+    'Colombia': '.COL', # Bolsa de Valores de Colombia
+    'Copenhagen': '.CO',# Copenhagen Stock Exchange
+    'Stockholm': '.ST', # Nasdaq Stockholm
+    'Amsterdam': '.AS', # Euronext Amsterdam
+    'Lisbon': '.LS',    # Euronext Lisbon
+    'Dublin': '.DUB',   # Euronext Dublin
+    'Dubai': '.DFM',    # Dubai Financial Market
+    'Qatar': '.QSE',    # Qatar Stock Exchange
+    'Saudi': '.TADAWUL',# Saudi Stock Exchange
+    'Taipei': '.TW',    # Taiwan Stock Exchange
+    'Jakarta': '.JK',   # Indonesia Stock Exchange
+    'Philippines': '.PSE',# Philippine Stock Exchange
+    'TO': '.TO',        # Toronto Stock Exchange (alternative for TSX)
+    'V': '.VI',         # Vienna Stock Exchange (alternative for Wien)
+    'NEO': '.NEO',      # NEO Exchange
+    'BE': '.BE',        # Belgium Exchange
+    'HM': '.HM',        # Hong Kong Stock Exchange (alternative)
+    'XETRA': '.XETRA',  # Xetra (Frankfurt Stock Exchange's electronic trading platform)
+    'DU': '.DU',        # Dubai Financial Market (alternative)
+    'HA': '.HA',        # Hang Seng Index (Hong Kong Stock Exchange alternative)
+    'MU': '.MU',        # Malta Stock Exchange
+    'STU': '.STU',      # Stuttgart Stock Exchange
+    'F': '.F',          # Frankfurt Stock Exchange (alternative)
+    'LU': '.LU',        # Luxembourg Stock Exchange
+    'BR': '.BR',        # B3 (formerly BM&FBOVESPA) - Brazil Stock Exchange (alternative)
+    'MC': '.MC',        # Madrid Stock Exchange
+    'LS': '.LS',        # Euronext Lisbon (alternative)
+    'IC': '.IC',        # Iceland Stock Exchange
+    'IR': '.IR',        # Iran Stock Exchange
+    'HE': '.HE',        # Helsinki Stock Exchange
+    'CO': '.CO',        # Copenhagen Stock Exchange (alternative)
+    'VFEX': '.VFEX',    # Victoria Falls Stock Exchange
+    'XZIM': '.XZIM',    # Zimbabwe Stock Exchange
+    'LUSE': '.LUSE',    # Lusaka Stock Exchange
+    'USE': '.USE',      # Uganda Securities Exchange
+    'DSE': '.DSE',      # Dhaka Stock Exchange
+    'PR': '.PR',        # Prague Stock Exchange
+    'RSE': '.RSE',      # Rwanda Stock Exchange
+    'XBOT': '.XBOT',    # Botswana Stock Exchange
+    'EGX': '.EGX',      # Egyptian Stock Exchange
+    'XNSA': '.XNSA',    # National Stock Exchange of India (alternative)
+    'GSE': '.GSE',      # Ghana Stock Exchange
+    'MSE': '.MSE',      # Malta Stock Exchange (alternative)
+    'BRVM': '.BRVM',    # Bourse Régionale des Valeurs Mobilières
+    'XNAI': '.XNAI',    # Nairobi Stock Exchange
+    'BC': '.BC',        # Bulgarian Stock Exchange
+    'SEM': '.SEM',      # Stock Exchange of Mauritius
+    'TA': '.TA',        # Tel Aviv Stock Exchange
+    'KQ': '.KQ',        # Kenya Stock Exchange
+    'KO': '.KO',        # Korean Stock Exchange
+    'BUD': '.BUD',      # Budapest Stock Exchange
+    'WAR': '.WAR',      # Warsaw Stock Exchange
+    'PSE': '.PSE',      # Philippine Stock Exchange (alternative)
+    'JK': '.JK',        # Jakarta Stock Exchange (alternative)
+    'AU': '.AU',        # Australian Stock Exchange (alternative)
+    'SHG': '.SHG',      # Shanghai Stock Exchange (alternative)
+    'KAR': '.KAR',      # Karachi Stock Exchange
+    'JSE': '.JSE',      # Johannesburg Stock Exchange
+    'NSE': '.NSE',      # National Stock Exchange of India (alternative)
+    'AT': '.AT',        # Athens Stock Exchange
+    'SHE': '.SHE',      # Shenzhen Stock Exchange (alternative)
+    'SN': '.SN',        # Senegal Stock Exchange
+    'BK': '.BK',        # Bosnia and Herzegovina Stock Exchange
+    'CM': '.CM',        # Cameroon Stock Exchange
+    'VN': '.VN',        # Vietnam Stock Exchange
+    'KLSE': '.KLSE',    # Kuala Lumpur Stock Exchange
+    'RO': '.RO',        # Romanian Stock Exchange
+    'SA': '.SA',        # Saudi Stock Exchange (alternative)
+    'BA': '.BA',        # Belgrade Stock Exchange
+    'MX': '.MX',        # Mexican Stock Exchange
+    'IL': '.IL',        # Israeli Stock Exchange
+    'ZSE': '.ZSE',      # Zimbabwe Stock Exchange (alternative)
+    'TW': '.TW',        # Taiwan Stock Exchange (alternative)
+    'TWO': '.TWO',      # Taiwan OTC Exchange
+    'EUBOND': '.EUBOND',# European Bond Exchange
+    'LIM': '.LIM',      # Limassol Stock Exchange
+    'GBOND': '.GBOND',  # Global Bond Exchange
+    'MONEY': '.MONEY',  # Money Market Exchange
+    'EUFUND': '.EUFUND',# European Fund Exchange
+    'IS': '.IS',        # Iceland Stock Exchange (alternative)
+    'FOREX': '.FOREX',  # Foreign Exchange Market
+    'CC': '.CC'         # Commodity Exchange
+}
+
+    
+    for index, row in symbols.iterrows():
+        exchange = row.get('exchange', '')
+        symbol = row.get('symbol', '')
+     
+           
+        if symbol is None or exchange not in exchanges:
+            continue  # Skip rows with a null symbol or an unsupported exchange
+        symbol = str(symbol)        
+        suffix = exchanges.get(exchange, '')
+        ticker = symbol + suffix
+        
+        print(ticker)
+
+        cursor.execute("SELECT ticker FROM symbol WHERE ticker = %s", (ticker,))
+        existing_symbol = cursor.fetchone()
+        cursor.fetchall()    
+       
+        if existing_symbol:
+            continue  # Skip insertion if symbol already exists
+
+        instrument = row.get('assetType', None)
+        name = row.get('name', None)
         sector = None  # Replace this with the actual sector value if available in your DataFrame
         currency = None  # Replace this with the actual currency value if available in your DataFrame
         created_date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -258,10 +445,14 @@ def insert_daily_price_data_in_db(symbol, start_date, end_date=None):
 
         created_date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         last_updated_date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-        sql = "INSERT INTO daily_price (data_vendor_id, exchange_vendor_id, symbol_id, price_date, created_date, last_updated_date, open_price, high_price, low_price, close_price, adj_close_price, volume) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
-        val = (data_vendor_id, 1, symbol_id, price_date, created_date, last_updated_date, open_price, high_price, low_price, close_price, adj_close_price, volume)
-        cursor.execute(sql, val)
+        try:
+            sql = "INSERT INTO daily_price (data_vendor_id, exchange_vendor_id, symbol_id, price_date, created_date, last_updated_date, open_price, high_price, low_price, close_price, adj_close_price, volume) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+            val = (data_vendor_id, 1, symbol_id, price_date, created_date, last_updated_date, open_price, high_price, low_price, close_price, adj_close_price, volume)
+            cursor.execute(sql, val)
+        except:
+            print("some error while inserting")
+            cursor.close()    
+            continue
 
     con.commit()
     cursor.close()
@@ -308,6 +499,7 @@ def insert_daily_price_data_for_all_symbols(start_date, end_date=None):
     symbols = get_symbols_from_db()
     for symbol, instrument in symbols:
         if instrument == 'cryptocurrency':
+            continue
             insert_crypto_daily_price_data_in_db(symbol, start_date, end_date)
         else:
            
@@ -398,6 +590,8 @@ def main():
     #insert_crypto_symbols_in_db()
     #print(get_crypto_daily_price_from_vendor("BNB-BTC","2013-01-01"))
     #insert_crypto_daily_price_data_in_db("SCRT-BTC","2013-01-01")
+    #get_world_symbols_from_vendor()
+    #print(get_symbols_from_vendor())
+    #insert_world_symbols_in_db()
 
-
-#main()
+main()
