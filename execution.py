@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 from strategies.mean_reverting import long
-from get_data import get_symbols_from_db, get_daily_price_from_db, get_symbol_id
+from get_data import get_symbols_from_db, get_daily_price_from_db, get_symbol_id,insert_daily_price_data_in_db
 from connection import connect_db
 import mysql.connector as mdb
 from portfolio import calc_betsize
@@ -57,7 +57,7 @@ def check_trades(df):
         slot_free = row['slot_free'] == 1  # Convert slot_free to boolean
 
         print(f"Processing Symbol ID: {symbol_id}, Strategy ID: {strategy_id}, Slot Free: {slot_free}")
-
+        insert_daily_price_data_in_db(symbol_name, "2013-01-01")
         # Get daily price data for the symbol
         df_prices = get_daily_price_from_db(symbol_name, "2013-01-01")
         signal = None

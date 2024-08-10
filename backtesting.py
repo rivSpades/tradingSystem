@@ -105,13 +105,14 @@ def insert_backtesting_results(conn, strategy_id, symbol_id, start_date, end_dat
             percentage_win_periods, percentage_loss_periods, average_holding_period, average_period_percentage
         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     '''
+    # Handle cases where statistics may not be available or are empty
     cursor.execute(query, (
-        strategy_id, symbol_id, start_date, end_date, statistics['total_pnl'], statistics['max_drawdown'], len(statistics),
-        statistics['percentage_win_periods'], statistics['total_pnl'], statistics['average_period_pnl'],
-        statistics['max_period_profit'], statistics['max_period_loss'], statistics['average_period_profit'],
-        statistics['average_period_loss'], statistics['winning_periods'], statistics['losing_periods'],
-        statistics['percentage_win_periods'], statistics['percentage_loss_periods'], statistics['average_holding_period'],
-        statistics['average_period_percentage']
+        strategy_id, symbol_id, start_date, end_date, statistics.get('total_pnl'), statistics.get('max_drawdown'),
+        len(statistics), statistics.get('percentage_win_periods'), statistics.get('total_pnl'),
+        statistics.get('average_period_pnl'), statistics.get('max_period_profit'), statistics.get('max_period_loss'),
+        statistics.get('average_period_profit'), statistics.get('average_period_loss'), statistics.get('winning_periods'),
+        statistics.get('losing_periods'), statistics.get('percentage_win_periods'), statistics.get('percentage_loss_periods'),
+        statistics.get('average_holding_period'), statistics.get('average_period_percentage')
     ))
     conn.commit()
 
@@ -153,6 +154,7 @@ def main():
         conn = connect_db()
         if  check_backtesting_results_exists(conn, strategy_id, symbol_id):
             conn.close()
+            print("already exists, skipping")
             continue
         df = get_daily_price_from_db(symbol, "2013-01-01")
     
@@ -211,6 +213,7 @@ def main():
         statistics = calculate_statistics(trade_log, df)
         if not statistics:
             print("No statistics, error")
+            insert_backtesting_results(conn, strategy_id, symbol_id, current_data["price_date"].iloc[0], current_data["price_date"].iloc[-1], {})
             continue
     # Connect to the database
         
