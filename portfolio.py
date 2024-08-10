@@ -76,7 +76,7 @@ def update_assets_strategies():
                 HAVING
                     avg_roi_per_trade_percentage < 1000
                     AND avg_holding_period < 70
-                    AND total_exit_trades >= 3
+                    AND total_exit_trades >= 2
                     AND win_rate >= 80
                     AND total_profit_loss > 0
                     AND avg_roi_per_trade_percentage >= 3
@@ -333,11 +333,12 @@ def calc_betsize(symbol, id_strat):
 
 
 def main():
-    #delete_invalid_data()
-    #populate_assets_strategies_table()
-    #update_assets_strategies()
+    delete_invalid_data()
+    populate_assets_strategies_table()
+    update_assets_strategies()
     #print(get_symbol_statistics('BIL'))
-    calc_betsize('BIL',1)
+    calc_betsize('LEED.L',1)
 
-if __name__ == "__main__":
-    main()
+main()
+#if __name__ == "__main__":
+    #main()
