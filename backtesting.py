@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from strategies.mean_reverting import long
+from strategies.mean_reverting import execute
 from get_data import get_symbols_from_db, get_daily_price_from_db,get_symbol_id
 from connection import connect_db
 import mysql.connector as mdb
@@ -22,7 +22,7 @@ def delete_existing_entries(conn, strategy_id, symbol_id):
     conn.commit()
 
 
-def calculate_statistics(trade_log,price_data):
+def calculate_statistics(trade_log, price_data):
     if not trade_log:
         return {}
 
@@ -43,39 +43,37 @@ def calculate_statistics(trade_log,price_data):
     percentage_loss_periods = (losing_periods / len(period_pnls) * 100) if period_pnls else 0  # Percentage Loss Periods
 
     # Calculate ROI %
-    total_investment = sum(1 for trade in trade_log if trade['trade_type'] == 'Long')  # Each 'Long' trade represents a $1 investment
+    total_investment = sum(1 for trade in trade_log if trade['trade_type'] in ['Long', 'Short'])  # Each trade represents a $1 investment
     roi = (total_pnl / total_investment) * 100 if total_investment != 0 else 0
 
-    # Calculate max drawdown
-    cumulative_pnl = np.cumsum(period_pnls)
-    
-    
-
     # Calculate Average Period PnL in %
-    period_pnl_percentages = [(trade['profit_loss'] / (trade['price'] )) * 100 if (trade['price'] ) != 0 else 0 for trade in trade_log]
+    period_pnl_percentages = [(trade['profit_loss'] / (trade['price'])) * 100 if (trade['price']) != 0 else 0 for trade in trade_log]
     average_period_percentage = np.mean(period_pnl_percentages) if period_pnl_percentages else 0
 
-
-     # Calculate Average Holding Period
+    # Calculate Average Holding Period
     holding_periods = []
     max_drawdown = 0
     for i in range(1, len(trade_log)):
-        if trade_log[i]['trade_type'] == 'Exit' and trade_log[i-1]['trade_type'] == 'Long':
+        if trade_log[i]['trade_type'] == 'Exit' and trade_log[i-1]['trade_type'] in ['Long', 'Short']:
             entry_price = trade_log[i-1]['price']
             if entry_price == 0:  # Ensure no division by zero
-                print("entry price is zero , error")
+                print("entry price is zero, error")
                 continue
+
             holding_data = price_data[(price_data['price_date'] >= trade_log[i-1]['trade_date']) & (price_data['price_date'] <= trade_log[i]['trade_date'])]
-           
-            lowest_price = holding_data['low_price'].min()
-         
-            drawdown = ((entry_price - lowest_price) / entry_price) * 100  # Drawdown in percentage
+            if trade_log[i-1]['trade_type'] == 'Long':
+                lowest_price = holding_data['low_price'].min()
+                drawdown = ((entry_price - lowest_price) / entry_price) * 100  # Drawdown in percentage for Long trades
+            elif trade_log[i-1]['trade_type'] == 'Short':
+                highest_price = holding_data['high_price'].max()
+                drawdown = ((highest_price - entry_price) / entry_price) * 100  # Drawdown in percentage for Short trades
+
             if drawdown > max_drawdown:
                 max_drawdown = drawdown
-            holding_periods.append((trade_log[i]['trade_date'] - trade_log[i-1]['trade_date']).days)
-            
-    average_holding_period = np.mean(holding_periods) if holding_periods else 0
 
+            holding_periods.append((trade_log[i]['trade_date'] - trade_log[i-1]['trade_date']).days)
+
+    average_holding_period = np.mean(holding_periods) if holding_periods else 0
 
     return {
         "total_pnl": total_pnl,  # Total Profit/Loss (PnL)
@@ -92,8 +90,8 @@ def calculate_statistics(trade_log,price_data):
         "roi": roi,  # ROI %
         "max_drawdown": max_drawdown,  # Maximum Drawdown in %
         "average_holding_period": average_holding_period  # Average Holding Period
-    
     }
+
 
 def insert_backtesting_results(conn, strategy_id, symbol_id, start_date, end_date, statistics):
     cursor = conn.cursor()
@@ -128,14 +126,16 @@ def insert_trade_log(conn, strategy_id, symbol_id, trade_log):
     cursor = conn.cursor()
     query = '''
         INSERT INTO backtesting_trades (
-            strategy_id, symbol_id, trade_date, trade_type, price, profit_loss, max_drawdown
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            strategy_id, symbol_id, trade_date, trade_type, price, profit_loss, max_drawdown, market_type
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
     '''
     for trade in trade_log:
         cursor.execute(query, (
-            strategy_id, symbol_id, trade['trade_date'], trade['trade_type'], trade['price'], trade['profit_loss'], trade['max_drawdown']
+            strategy_id, symbol_id, trade['trade_date'], trade['trade_type'], trade['price'], trade['profit_loss'],
+            trade['max_drawdown'], trade.get('market_type', None)
         ))
     conn.commit()
+
 
 
 # Replace with actual values
@@ -168,15 +168,17 @@ def main():
         buy = False
         trade_log = []
         signal="None"
+        last_action=""
         for i in range(len(future_data.index)):
             current_data = pd.concat([current_data, pd.DataFrame(future_data.iloc[i]).transpose()], axis=0)
-            signal = long(current_data, buy)
+            signal = execute(current_data, buy,last_action)
 
             if signal == 'Long' and not buy:
                 entry_price = future_data['close_price'].iloc[i]
                 lowest_price = entry_price
+                highest_price = entry_price
                 quantity = 1 / entry_price
-
+                last_action='Long'
                 buy = True
                 trade_log.append({
                     'trade_date': future_data["price_date"].iloc[i],
@@ -184,15 +186,33 @@ def main():
                     'price': future_data['close_price'].iloc[i],
                     'quantity': quantity,
                     'profit_loss': 0,
-                    'max_drawdown': 0  # Initialize drawdown
+                    'max_drawdown': 0,  # Initialize drawdown
+                    'market_type': 'Long'
                 })
 
-            elif signal == "Exit" and buy:
+            elif signal == 'Short' and not buy:
+                entry_price = future_data['close_price'].iloc[i]
+                highest_price = entry_price
+                lowest_price = entry_price
+                quantity = 1 / entry_price
+                last_action='Short'
+                buy = True
+                trade_log.append({
+                    'trade_date': future_data["price_date"].iloc[i],
+                    'trade_type': 'Short',
+                    'price': future_data['close_price'].iloc[i],
+                    'quantity': quantity,
+                    'profit_loss': 0,
+                    'max_drawdown': 0,
+                    'market_type': 'Short'
+                })
+
+            elif signal == "Exit" and buy and last_action=='Long':
                 exit_price = future_data['close_price'].iloc[i]
                 quantity = trade_log[-1]['quantity']
                 profit_loss = (exit_price - trade_log[-1]['price']) * quantity
                 drawdown = (entry_price - lowest_price) / entry_price * 100
-
+                last_action=''
                 buy = False
                 trade_log.append({
                     'trade_date': future_data["price_date"].iloc[i],
@@ -200,14 +220,38 @@ def main():
                     'price': future_data['close_price'].iloc[i],
                     'quantity': quantity,
                     'profit_loss': profit_loss,
-                    'max_drawdown': drawdown
+                    'max_drawdown': drawdown,
+                    'market_type': 'Long'
                 })
+
+            elif signal == "Exit" and buy and last_action=='Short':
+                exit_price = future_data['close_price'].iloc[i]
+                quantity = trade_log[-1]['quantity']
+                profit_loss = (trade_log[-1]['price'] - exit_price) * quantity
+                drawdown = (highest_price -entry_price) / entry_price * 100
+                last_action=''
+                buy = False
+                trade_log.append({
+                    'trade_date': future_data["price_date"].iloc[i],
+                    'trade_type': 'Exit',
+                    'price': future_data['close_price'].iloc[i],
+                    'quantity': quantity,
+                    'profit_loss': profit_loss,
+                    'max_drawdown': drawdown,
+                    'market_type': 'Short'
+                })
+
 
             if buy:
                 # Update the lowest price while the trade is active
                 current_low_price = future_data['low_price'].iloc[i]
+                current_high_price = future_data['high_price'].iloc[i]
+
                 if current_low_price < lowest_price:
                     lowest_price = current_low_price
+
+                if current_high_price > highest_price:
+                    highest_price = current_high_price                    
 
         # Calculate statistics
         statistics = calculate_statistics(trade_log, df)

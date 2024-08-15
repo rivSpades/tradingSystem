@@ -243,7 +243,7 @@ def calculate_ratio(df):
     
     return df
 
-def long(df,buy=False):
+def execute(df,buy=False,last_action=''):
   df= calculate_ratio(df)
   if df['Ratio'].dropna().empty:
       return 'None'
@@ -255,17 +255,31 @@ def long(df,buy=False):
   #print(df)
   
   if buy==False and df['Ratio'].iloc[-1]<=p[0]  and check_stationary(df):
-      print("Buying")
+      print("Buying Long")
       #print( df.tail(10))
       #print(p)
       
       return 'Long'
-  elif buy==True and  (df['Ratio'].iloc[-1]>=p[2] ): 
+
+  elif buy==False and df['Ratio'].iloc[-1]>=p[-1]  and check_stationary(df):
+      print("Buying Short")
+      #print( df.tail(10))
+      #print(p)      
+      return 'Short'
+
+  elif buy==True and  df['Ratio'].iloc[-1]>=p[2]  and last_action=="Long" : 
       print("Exiting")
       #print( df.tail(10)) 
       #print(p)
       
       return 'Exit'
+
+  elif buy==True and  df['Ratio'].iloc[-1]<=p[2] and last_action=="Short":
+      print("Exiting")
+      #print( df.tail(10))
+      #print(p)
+
+      return 'Exit'      
   else:
       return 'None'
         

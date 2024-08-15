@@ -33,7 +33,7 @@ def update_assets_strategies():
     cursor = conn.cursor()
 
     try:
-        select_query = """
+        long_query = """
             SELECT
                 sub.symbol_id,
                 t.id AS strategy_id
@@ -41,22 +41,22 @@ def update_assets_strategies():
                 (SELECT 
                     br.symbol_id,
                     ROUND(
-                        (SUM(CASE WHEN bt.trade_type = 'Exit' THEN bt.profit_loss ELSE 0 END) / 
-                        NULLIF(SUM(CASE WHEN bt.trade_type = 'Exit' THEN 1 ELSE 0 END), 0)) * 100, 
+                        (SUM(CASE WHEN bt.trade_type = 'Exit' AND bt.market_type = 'Long' THEN bt.profit_loss ELSE 0 END) / 
+                        NULLIF(SUM(CASE WHEN bt.trade_type = 'Exit' AND bt.market_type = 'Long' THEN 1 ELSE 0 END), 0)) * 100, 
                         2
                     ) AS avg_roi_per_trade_percentage,
                     ROUND(
                         AVG(br.average_holding_period),
                         2
                     ) AS avg_holding_period,
-                    SUM(CASE WHEN bt.trade_type = 'Exit' THEN 1 ELSE 0 END) AS total_exit_trades,
+                    SUM(CASE WHEN bt.trade_type = 'Exit' AND bt.market_type = 'Long' THEN 1 ELSE 0 END) AS total_exit_trades,
                     ROUND(
-                        SUM(CASE WHEN bt.trade_type = 'Exit' AND bt.profit_loss > 0 THEN 1 ELSE 0 END) / 
-                        NULLIF(SUM(CASE WHEN bt.trade_type = 'Exit' THEN 1 ELSE 0 END), 0) * 100, 
+                        SUM(CASE WHEN bt.trade_type = 'Exit' AND bt.market_type = 'Long' AND bt.profit_loss > 0 THEN 1 ELSE 0 END) / 
+                        NULLIF(SUM(CASE WHEN bt.trade_type = 'Exit' AND bt.market_type = 'Long' THEN 1 ELSE 0 END), 0) * 100, 
                         2
                     ) AS win_rate,
                     ROUND(
-                        SUM(CASE WHEN bt.trade_type = 'Exit' THEN bt.profit_loss ELSE 0 END),
+                        SUM(CASE WHEN bt.trade_type = 'Exit' AND bt.market_type = 'Long' THEN bt.profit_loss ELSE 0 END),
                         2
                     ) AS total_profit_loss,
                     ROUND(
@@ -80,22 +80,87 @@ def update_assets_strategies():
                     AND win_rate >= 80
                     AND total_profit_loss > 0
                     AND avg_roi_per_trade_percentage >= 3
-                    
                 ) AS sub
             CROSS JOIN
                 strategies t;
         """
-        cursor.execute(select_query)
-        records = cursor.fetchall()
+        
+        # Query to get Short trades
+        short_query = """
+            SELECT
+                sub.symbol_id,
+                t.id AS strategy_id
+            FROM
+                (SELECT 
+                    br.symbol_id,
+                    ROUND(
+                        (SUM(CASE WHEN bt.trade_type = 'Exit' AND bt.market_type = 'Short' THEN bt.profit_loss ELSE 0 END) / 
+                        NULLIF(SUM(CASE WHEN bt.trade_type = 'Exit' AND bt.market_type = 'Short' THEN 1 ELSE 0 END), 0)) * 100, 
+                        2
+                    ) AS avg_roi_per_trade_percentage,
+                    ROUND(
+                        AVG(br.average_holding_period),
+                        2
+                    ) AS avg_holding_period,
+                    SUM(CASE WHEN bt.trade_type = 'Exit' AND bt.market_type = 'Short' THEN 1 ELSE 0 END) AS total_exit_trades,
+                    ROUND(
+                        SUM(CASE WHEN bt.trade_type = 'Exit' AND bt.market_type = 'Short' AND bt.profit_loss > 0 THEN 1 ELSE 0 END) / 
+                        NULLIF(SUM(CASE WHEN bt.trade_type = 'Exit' AND bt.market_type = 'Short' THEN 1 ELSE 0 END), 0) * 100, 
+                        2
+                    ) AS win_rate,
+                    ROUND(
+                        SUM(CASE WHEN bt.trade_type = 'Exit' AND bt.market_type = 'Short' THEN bt.profit_loss ELSE 0 END),
+                        2
+                    ) AS total_profit_loss,
+                    ROUND(
+                        AVG(br.drawdown),
+                        2
+                    ) AS drawdown
+                FROM
+                    backtesting_results br
+                JOIN
+                    symbol s ON br.symbol_id = s.id
+                JOIN
+                    backtesting_trades bt ON br.symbol_id = bt.symbol_id
+                WHERE
+                    br.profit > 0
+                GROUP BY
+                    br.symbol_id
+                HAVING
+                    avg_roi_per_trade_percentage < 1000
+                    AND avg_holding_period < 70
+                    AND total_exit_trades >= 2
+                    AND win_rate >= 80
+                    AND total_profit_loss > 0
+                    AND avg_roi_per_trade_percentage >= 3
+                ) AS sub
+            CROSS JOIN
+                strategies t;
+        """
+        cursor.execute(long_query)
+        long_records = cursor.fetchall()
 
-        update_query = """
+        cursor.execute(short_query)
+        short_records = cursor.fetchall()
+
+        update_long_query = """
             UPDATE Assets_Strategies
-            SET strategy_active = TRUE
+            SET isLong = TRUE, strategy_active = TRUE
             WHERE symbol_id = %s AND strategy_id = %s
         """
 
-        for symbol_id, strategy_id in records:
-            cursor.execute(update_query, (symbol_id, strategy_id))
+        update_short_query = """
+            UPDATE Assets_Strategies
+            isShort = TRUE, strategy_active = TRUE
+            WHERE symbol_id = %s AND strategy_id = %s
+        """        
+
+        for symbol_id, strategy_id in long_records:
+            cursor.execute(update_long_query, (symbol_id, strategy_id))
+
+        # Update the database for Short trades
+        for symbol_id, strategy_id in short_records:
+            cursor.execute(update_short_query, (symbol_id, strategy_id))
 
         conn.commit()
         print("Assets_Strategies table updated successfully.")
