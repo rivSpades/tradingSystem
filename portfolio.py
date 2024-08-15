@@ -337,7 +337,7 @@ def main():
     populate_assets_strategies_table()
     update_assets_strategies()
     #print(get_symbol_statistics('BIL'))
-    calc_betsize('LEED.L',1)
+    #calc_betsize('LEED.L',1)
 
 main()
 #if __name__ == "__main__":
