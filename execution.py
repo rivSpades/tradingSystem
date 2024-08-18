@@ -21,8 +21,8 @@ def get_active_symbols_and_strategies():
                 s.ticker, 
                 a.strategy_id, 
                 a.slot_free,
-                a.last_action
-                a.isShort
+                a.last_action,
+                a.isShort,
                 a.isLong
             FROM 
                 Assets_Strategies a

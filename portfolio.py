@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from strategies.mean_reverting import long
+
 from get_data import get_symbols_from_db, get_daily_price_from_db, get_symbol_id
 from connection import connect_db
 import mysql.connector as mdb
@@ -31,8 +31,17 @@ def populate_assets_strategies_table():
 def update_assets_strategies():
     conn = connect_db()
     cursor = conn.cursor()
-
+    
     try:
+
+        reset_query = """
+            UPDATE Assets_Strategies
+            SET isLong = 0, isShort = 0, strategy_active = 0
+            WHERE slot_free = 1
+        """
+        cursor.execute(reset_query)
+        conn.commit()
+        
         long_query = """
             SELECT
                 sub.symbol_id,
@@ -145,13 +154,13 @@ def update_assets_strategies():
 
         update_long_query = """
             UPDATE Assets_Strategies
-            SET isLong = TRUE, strategy_active = TRUE
+            SET isLong = 1, strategy_active = 1
             WHERE symbol_id = %s AND strategy_id = %s
         """
 
         update_short_query = """
-            UPDATE Assets_Strategies
-            isShort = TRUE, strategy_active = TRUE
+            UPDATE Assets_Strategies SET
+            isShort = 1, strategy_active = 1
             WHERE symbol_id = %s AND strategy_id = %s
         """        
 
