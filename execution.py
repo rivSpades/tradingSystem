@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 from strategies.mean_reverting import execute  # Assuming execute function handles the strategy logic
-from get_data import get_symbols_from_db, get_daily_price_from_db, get_symbol_id, insert_daily_price_data_in_db
+from get_data import get_symbols_from_db, get_daily_price_from_db, get_symbol_id, insert_daily_price_data_in_db,insert_crypto_daily_price_data_in_db
 from connection import connect_db
 import mysql.connector as mdb
 from portfolio import calc_betsize
@@ -23,7 +23,9 @@ def get_active_symbols_and_strategies():
                 a.slot_free,
                 a.last_action,
                 a.isShort,
-                a.isLong
+                a.isLong,
+                s.instrument
+
             FROM 
                 Assets_Strategies a
             JOIN 
@@ -34,7 +36,7 @@ def get_active_symbols_and_strategies():
         
         cursor.execute(query)
         result = cursor.fetchall()
-        df = pd.DataFrame(result, columns=['symbol_id', 'symbol', 'strategy_id', 'slot_free', 'last_action','isShort','isLong'])
+        df = pd.DataFrame(result, columns=['symbol_id', 'symbol', 'strategy_id', 'slot_free', 'last_action','isShort','isLong','instrument'])
         return df
 
     except mdb.Error as e:
@@ -58,9 +60,13 @@ def check_trades(df):
         is_long = row['isLong'] == 1  
         is_short = row['isShort'] == 1  
         last_action = row['last_action']
+        instrument = row['instrument']
 
         print(f"Processing Symbol ID: {symbol_id}, Strategy ID: {strategy_id}, Slot Free: {slot_free}, Last Action: {last_action}")
-        insert_daily_price_data_in_db(symbol_name, "2013-01-01")
+        if instrument == 'cryptocurrency':
+            insert_crypto_daily_price_data_in_db(symbol_name, "2013-01-01")
+        else:    
+            insert_daily_price_data_in_db(symbol_name, "2013-01-01")
         
         df_prices = get_daily_price_from_db(symbol_name, "2013-01-01")
         signal = None
@@ -154,16 +160,18 @@ def check_trades(df):
             
             if last_action == 'Long':
                 select_exec_order_query = """
-                    SELECT id FROM execute_orders
+                    SELECT id,buyprice, quantity FROM execute_orders
                     WHERE symbol_id = %s AND action = 'Long' AND strategy_id = %s
                     ORDER BY created_date DESC
                     LIMIT 1;
                 """
                 cursor.execute(select_exec_order_query, (symbol_id, strategy_id))
-                exec_order_id = cursor.fetchone()
+                exec_order = cursor.fetchone()
                 
-                if exec_order_id:
-                    exec_order_id = exec_order_id[0]
+                if exec_order:
+                    exec_order_id = exec_order[0]
+                    buyprice = exec_order[1]
+                    quantity = exec_order[2]
                     sellprice = df_prices['close_price'].iloc[-1] if not df_prices.empty else None
                     profit_loss = (sellprice - buyprice) * quantity if sellprice and buyprice else None
                     
@@ -179,16 +187,18 @@ def check_trades(df):
                     print(f"No matching Long order found for Symbol {symbol_name}.")
             elif last_action == 'Short':
                 select_exec_order_query = """
-                    SELECT id FROM execute_orders
+                    SELECT id, buyprice, quantity FROM execute_orders
                     WHERE symbol_id = %s AND action = 'Short' AND strategy_id = %s
                     ORDER BY created_date DESC
                     LIMIT 1;
                 """
                 cursor.execute(select_exec_order_query, (symbol_id, strategy_id))
-                exec_order_id = cursor.fetchone()
+                exec_order = cursor.fetchone()
                 
-                if exec_order_id:
-                    exec_order_id = exec_order_id[0]
+                if exec_order:
+                    exec_order_id = exec_order[0]
+                    buyprice = exec_order[1]
+                    quantity = exec_order[2]
                     sellprice = df_prices['close_price'].iloc[-1] if not df_prices.empty else None
                     profit_loss = (buyprice - sellprice) * quantity if sellprice and buyprice else None
                     

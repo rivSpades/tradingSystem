@@ -420,7 +420,7 @@ def insert_daily_price_data_in_db(symbol, start_date, end_date=None):
         start_date = (last_date + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
 
     #stock_data = get_daily_price_from_vendor(symbol, 'Alphavantage', start_date, end_date)
-    stock_data = get_daily_price_from_vendor(symbol, 'Yahoo Finance', start_date, end_date)
+    stock_data = get_daily_price_from_vendor(symbol, data_vendor, start_date, end_date)
 
     if stock_data.empty:
         data_vendor = 'Yahoo Finance'
@@ -499,10 +499,10 @@ def insert_daily_price_data_for_all_symbols(start_date, end_date=None):
     symbols = get_symbols_from_db()
     for symbol, instrument in symbols:
         if instrument == 'cryptocurrency':
-            continue
+            
             insert_crypto_daily_price_data_in_db(symbol, start_date, end_date)
         else:
-           
+            continue
            
             insert_daily_price_data_in_db(symbol, start_date, end_date)
         

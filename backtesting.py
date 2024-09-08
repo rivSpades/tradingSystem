@@ -145,7 +145,7 @@ def main():
     for symbol, instrument in symbols:
         print(symbol)
         #print(instrument)
-        if instrument == 'cryptocurrency':
+        if instrument != 'cryptocurrency':
             continue
 
       
